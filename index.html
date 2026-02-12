@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Great Assembly 1926</title>
+    <style>
+        :root {
+            --deco-gold: #c5a059;
+            --blueprint-blue: #1a2a3a;
+            --industrial-grey: #333;
+            --money-green: #85bb65;
+            --bg-dark: #0f161d;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #hud {
+            height: 70px;
+            background: #000;
+            border-bottom: 3px solid var(--deco-gold);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 100;
+            padding: 0 10px;
+        }
+
+        .balance { font-size: 24px; color: var(--money-green); font-weight: bold; }
+
+        .btn-action {
+            background: var(--deco-gold);
+            color: black;
+            border: none;
+            padding: 8px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        #viewport {
+            display: flex;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        #conveyor-shaft {
+            width: 130px;
+            background: #111;
+            border-right: 4px solid var(--deco-gold);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            min-height: 100%;
+        }
+
+        #factory-floor {
+            flex-grow: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 800px;
+        }
+
+        .component-card {
+            background: #222;
+            border: 2px solid var(--deco-gold);
+            padding: 15px;
+            position: relative;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 12px;
+            background: #000;
+            margin: 10px 0;
+            border: 1px solid #444;
+        }
+
+        .progress-bar { height: 100%; background: var(--deco-gold); width: 0%; transition: width 0.1s linear; }
+
+        .btn-upgrade {
+            background: var(--deco-gold);
+            border: none;
+            padding: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            width: 100%;
+        }
+
+        .btn-upgrade:disabled { background: #555; opacity: 0.5; cursor: not-allowed; }
+
+        .manager-slot {
+            width: 45px;
+            height: 45px;
+            background: #333;
+            border: 2px solid var(--deco-gold);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .stats-row { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 4px;}
+        h3 { margin: 0 0 10px 0; color: var(--deco-gold); font-size: 16px; }
+        .multiplier-tag { color: var(--money-green); font-size: 10px; }
+
+    </style>
+</head>
+<body>
+
+<div id="hud">
+    <div class="balance" id="money-display">$500</div>
+    <button class="btn-action" onclick="activateBoost()" id="boost-btn">📻 PLAY JAZZ (4x)</button>
+    <button class="btn-action" style="background:#888;" onclick="resetGame()">🗑️ RESET</button>
+</div>
+
+<div id="viewport">
+    <div id="conveyor-shaft">
+        <div class="component-card" style="width: 100px; margin-top: 10px; padding: 10px;">
+            <div class="stats-row"><span>Lvl</span><span id="belt-lvl">1</span></div>
+            <div class="progress-container"><div id="bar-belt" class="progress-bar"></div></div>
+            <div class="stats-row"><span>Stock:</span><span id="belt-stock">0</span></div>
+            <button class="btn-upgrade" id="btn-up-belt" onclick="upgradeBelt()">UP $<span id="cost-belt">50</span></button>
+        </div>
+        <div style="writing-mode: vertical-rl; margin-top: 40px; color: var(--deco-gold); opacity: 0.2; font-size: 30px; letter-spacing: 10px;">FACTORY</div>
+    </div>
+
+    <div id="factory-floor">
+        <div id="shipping-area" class="component-card" style="background: var(--blueprint-blue);">
+            <h3>Shipping Depot</h3>
+            <div class="stats-row">
+                <span>Level: <span id="ship-lvl">1</span></span>
+                <span>Value: <span id="ship-val">$5</span></span>
+            </div>
+            <div class="progress-container"><div id="bar-ship" class="progress-bar"></div></div>
+            <button class="btn-upgrade" id="btn-up-ship" onclick="upgradeShipping()">Upgrade Depot $<span id="cost-ship">60</span></button>
+        </div>
+
+        <div id="workshops-list"></div>
+
+        <button id="btn-new-ws" class="btn-upgrade" style="padding: 15px; font-size: 16px; margin-bottom: 40px;" onclick="addWorkshop()">
+            Unlock New Floor ($<span id="next-ws-cost">1000</span>)
+        </button>
+    </div>
+</div>
+
+<script>
+    let money = 500;
+    let boostMultiplier = 1;
+
+    let belt = { level: 1, progress: 0, speed: 2, capacity: 15, stock: 0, cost: 50 };
+    let shipping = { level: 1, progress: 0, speed: 1.5, value: 5, cost: 60 };
+    let workshops = [{ level: 1, progress: 0, speed: 1.0, baseCapacity: 5, stock: 0, cost: 100, manager: false, floorMult: 1 }];
+
+    // --- SAVE SYSTEM ---
+    function saveGame() {
+        const gameData = { money, belt, shipping, workshops };
+        localStorage.setItem('assemblyTycoonSave', JSON.stringify(gameData));
+    }
+
+    function loadGame() {
+        const saved = localStorage.getItem('assemblyTycoonSave');
+        if (saved) {
+            const data = JSON.parse(saved);
+            money = data.money;
+            belt = data.belt;
+            shipping = data.shipping;
+            workshops = data.workshops;
+        }
+    }
+
+    function resetGame() {
+        if(confirm("Are you sure you want to delete all progress?")) {
+            localStorage.removeItem('assemblyTycoonSave');
+            location.reload();
+        }
+    }
+
+    // --- LOGIC ---
+    function upgradeBelt() {
+        if (money >= belt.cost) {
+            money -= belt.cost;
+            belt.level++; belt.capacity += 30; belt.speed += 0.2;
+            belt.cost = Math.floor(belt.cost * 1.6);
+            updateUI();
+        }
+    }
+
+    function upgradeShipping() {
+        if (money >= shipping.cost) {
+            money -= shipping.cost;
+            shipping.level++; shipping.value = Math.floor(shipping.value * 1.3) + 5;
+            shipping.speed += 0.15; shipping.cost = Math.floor(shipping.cost * 1.6);
+            updateUI();
+        }
+    }
+
+    function upgradeWorkshop(i) {
+        if (money >= workshops[i].cost) {
+            money -= workshops[i].cost;
+            workshops[i].level++; workshops[i].baseCapacity += 5;
+            workshops[i].cost = Math.floor(workshops[i].cost * 1.7);
+            renderWorkshops(); updateUI();
+        }
+    }
+
+    function addWorkshop() {
+        let cost = Math.pow(8, workshops.length) * 1000; 
+        if (money >= cost) {
+            money -= cost;
+            let newMult = Math.pow(6, workshops.length);
+            workshops.push({ level: 1, progress: 0, speed: 0.8, baseCapacity: 5, stock: 0, cost: Math.floor(cost * 0.4), manager: false, floorMult: newMult });
+            renderWorkshops(); updateUI();
+        }
+    }
+
+    function hireManager(i) {
+        let managerCost = workshops[i].cost * 5;
+        if (money >= managerCost && !workshops[i].manager) {
+            money -= managerCost;
+            workshops[i].manager = true; workshops[i].speed *= 2.5;
+            renderWorkshops(); updateUI();
+        }
+    }
+
+    function activateBoost() {
+        if(boostMultiplier > 1) return;
+        boostMultiplier = 4;
+        document.getElementById('boost-btn').innerText = "🎷 JAZZING...";
+        setTimeout(() => { boostMultiplier = 1; document.getElementById('boost-btn').innerText = "📻 PLAY JAZZ (4x)"; }, 15000);
+    }
+
+    function renderWorkshops() {
+        const container = document.getElementById('workshops-list');
+        container.innerHTML = ""; 
+        workshops.forEach((w, i) => {
+            const div = document.createElement('div');
+            div.className = 'component-card';
+            div.style.marginBottom = "15px";
+            div.innerHTML = `
+                <h3>Floor #${i+1} <span class="multiplier-tag">[x${w.floorMult} Efficiency]</span></h3>
+                <div class="stats-row"><span>Lvl ${w.level}</span><span>Output: ${(w.baseCapacity * w.floorMult).toLocaleString()}</span></div>
+                <div class="progress-container"><div id="bar-w-${i}" class="progress-bar"></div></div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn-upgrade" style="width: 70%;" onclick="upgradeWorkshop(${i})" ${money < w.cost ? 'disabled' : ''}>Upgrade $${w.cost.toLocaleString()}</button>
+                    <div class="manager-slot" title="Hire Manager" onclick="hireManager(${i})">${w.manager ? '👨‍💼' : '👤'}</div>
+                </div>
+                <div class="stats-row" style="margin-top:8px;"><span>Floor Stock:</span><span id="stock-w-${i}">${w.stock.toLocaleString()}</span></div>
+            `;
+            container.appendChild(div);
+        });
+        document.getElementById('next-ws-cost').innerText = (Math.pow(8, workshops.length) * 1000).toLocaleString();
+    }
+
+    function updateUI() {
+        document.getElementById('money-display').innerText = "$" + Math.floor(money).toLocaleString();
+        document.getElementById('belt-lvl').innerText = belt.level;
+        document.getElementById('belt-stock').innerText = belt.stock.toLocaleString();
+        document.getElementById('cost-belt').innerText = belt.cost.toLocaleString();
+        document.getElementById('ship-lvl').innerText = shipping.level;
+        document.getElementById('ship-val').innerText = "$" + shipping.value.toLocaleString();
+        document.getElementById('cost-ship').innerText = shipping.cost.toLocaleString();
+        
+        document.getElementById('btn-up-belt').disabled = money < belt.cost;
+        document.getElementById('btn-up-ship').disabled = money < shipping.cost;
+        document.getElementById('btn-new-ws').disabled = money < (Math.pow(8, workshops.length) * 1000);
+    }
+
+    function gameLoop() {
+        let delta = 1 * boostMultiplier;
+        workshops.forEach((w, i) => {
+            w.progress += w.speed * delta;
+            if (w.progress >= 100) { w.progress = 0; w.stock += (w.baseCapacity * w.floorMult); }
+            let b = document.getElementById(`bar-w-${i}`); if(b) b.style.width = w.progress + "%";
+            let s = document.getElementById(`stock-w-${i}`); if(s) s.innerText = w.stock.toLocaleString();
+        });
+
+        belt.progress += belt.speed * delta;
+        if (belt.progress >= 100) {
+            belt.progress = 0;
+            workshops.forEach(w => { let load = Math.min(w.stock, belt.capacity); w.stock -= load; belt.stock += load; });
+        }
+        document.getElementById('bar-belt').style.width = belt.progress + "%";
+
+        shipping.progress += shipping.speed * delta;
+        if (shipping.progress >= 100) {
+            shipping.progress = 0;
+            if (belt.stock > 0) { money += belt.stock * shipping.value; belt.stock = 0; }
+        }
+        document.getElementById('bar-ship').style.width = shipping.progress + "%";
+
+        updateUI();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Auto-Save every 10 seconds
+    setInterval(saveGame, 10000);
+
+    loadGame();
+    renderWorkshops();
+    gameLoop();
+</script>
+
+</body>
+</html>
