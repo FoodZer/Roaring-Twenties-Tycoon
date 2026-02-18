@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Great Assembly 1926</title>
+
+<style>
+:root {
+    --gold: #d4af37;
+    --dark: #0c1117;
+    --panel: #161b22;
+    --green: #4caf50;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: radial-gradient(circle at top, #1a2430, #0c1117 60%);
+    color: white;
+}
+
+#splash-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle, #1a2a3a 0%, #000 100%);
+    z-index: 1000;
+}
+
+#splash-screen h1 {
+    font-size: 3.5rem;
+    letter-spacing: 6px;
+    color: var(--gold);
+}
+
+.start-btn {
+    margin-top: 40px;
+    padding: 15px 50px;
+    border: 2px solid var(--gold);
+    background: transparent;
+    color: var(--gold);
+    cursor: pointer;
+}
+
+#hud {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    background: #000;
+    border-bottom: 2px solid var(--gold);
+}
+
+.balance {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--green);
+}
+
+button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.boost-btn { background: var(--gold); color: black; }
+.reset-btn { background: #444; color: white; }
+
+#game-area {
+    display: none;
+    padding: 40px;
+    display: grid;
+    gap: 20px;
+    justify-content: center;
+}
+
+.component {
+    width: 420px;
+    background: var(--panel);
+    border-radius: 15px;
+    padding: 25px;
+}
+
+.stat { display: flex; justify-content: space-between; margin: 8px 0; }
+
+.progress-container {
+    width: 100%;
+    height: 10px;
+    background: #111;
+    border-radius: 5px;
+    overflow: hidden;
+    margin: 12px 0;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--gold), #ffcc66);
+}
+
+.upgrade-btn { width: 100%; background: var(--gold); }
+.buy-new { text-align:center; padding:15px; border:2px dashed var(--gold); cursor:pointer; }
+</style>
+</head>
+
+<body>
+
+<div id="splash-screen">
+    <h1>THE GREAT ASSEMBLY</h1>
+    <button class="start-btn" onclick="startGame()">Enter Factory</button>
+</div>
+
+<div id="hud">
+    <div class="balance" id="money-display">$500</div>
+    <div>
+        <button class="boost-btn" onclick="activateBoost()">📻 Boost</button>
+        <button class="reset-btn" onclick="resetGame()">Reset</button>
+    </div>
+</div>
+
+<div id="game-area"></div>
+
+<script>
+let money = 500;
+let boost = 1;
+let belts = [];
+
+function createBelt(baseCost, multiplier) {
+    return { level:1, stock:0, cost:baseCost, progress:0, multiplier };
+}
+
+belts.push(createBelt(50,1));
+
+function startGame() {
+    document.getElementById("splash-screen").style.display = "none";
+    document.getElementById("hud").style.display = "flex";
+    document.getElementById("game-area").style.display = "grid";
+    renderBelts();
+    gameLoop();
+}
+
+function gameLoop() {
+    belts.forEach((belt,i)=>{
+        belt.progress += 0.5 * boost;
+        if(belt.progress >= 100){
+            belt.progress = 0;
+            belt.stock += belt.level * belt.multiplier;
+        }
+        document.getElementById(`progress-${i}`).style.width = belt.progress + "%";
+        document.getElementById(`stock-${i}`).innerText = belt.stock;
+    });
+    document.getElementById("money-display").innerText = "$"+money;
+    requestAnimationFrame(gameLoop);
+}
+
+setInterval(()=>{
+    belts.forEach(belt=>{
+        if(belt.stock>0){
+            money += belt.stock * 5;
+            belt.stock = 0;
+        }
+    });
+},3000);
+
+function upgradeBelt(i){
+    let belt = belts[i];
+    if(money >= belt.cost){
+        money -= belt.cost;
+        belt.level++;
+        belt.cost = Math.floor(belt.cost*1.7);
+        document.getElementById(`level-${i}`).innerText = belt.level;
+        document.getElementById(`cost-${i}`).innerText = belt.cost;
+    }
+}
+
+function buyNewBelt(){
+    let cost = 200*Math.pow(3,belts.length);
+    if(money>=cost){
+        money-=cost;
+        belts.push(createBelt(cost,Math.pow(2,belts.length)));
+        renderBelts();
+    }
+}
+
+function activateBoost(){ boost=4; setTimeout(()=>boost=1,10000); }
+function resetGame(){ location.reload(); }
+
+function renderBelts(){
+    const area=document.getElementById("game-area");
+    area.innerHTML="";
+
+    belts.forEach((belt,i)=>{
+        area.innerHTML+=`
+        <div class="component">
+            <div class="stat"><span>Conveyor ${i+1}</span><span>Lvl <span id="level-${i}">${belt.level}</span></span></div>
+            <div class="stat"><span>Stock</span><span id="stock-${i}">${belt.stock}</span></div>
+            <div class="stat"><span>Upgrade Cost</span><span>$<span id="cost-${i}">${belt.cost}</span></span></div>
+            <div class="progress-container"><div class="progress-bar" id="progress-${i}"></div></div>
+            <button class="upgrade-btn" onclick="upgradeBelt(${i})">Upgrade</button>
+        </div>`;
+    });
+
+    let newCost=200*Math.pow(3,belts.length);
+    area.innerHTML+=`<div class="buy-new" onclick="buyNewBelt()">+ Buy New Conveyor ($${newCost})</div>`;
+}
+</script>
+
+</body>
+</html>
